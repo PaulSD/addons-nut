@@ -1,8 +1,8 @@
-name: Network UPS Tools (Latest version)
-version: 0.17.0__2.8.4-really-2__2
-slug: nut-latest
+name: Network UPS Tools (With fixes)
+version: 0.17.0__2
+slug: nut-fixes
 description: Manage battery backup (UPS) devices
-url: "https://github.com/PaulSD/addons-nut/tree/main/nut-latest"
+url: "https://github.com/PaulSD/addons-nut/tree/main/nut-fixes"
 startup: system
 arch:
 - aarch64
@@ -60,4 +60,4 @@ schema:
   upsmon_deadtime: int?
   i_like_to_be_pwned: bool?
   leave_front_door_open: bool?
-image: "ghcr.io/paulsd/ha-addon-nut-latest-{arch}"
+image: "ghcr.io/paulsd/ha-addon-nut-fixes-{arch}"

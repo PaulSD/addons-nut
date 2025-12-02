@@ -2,18 +2,6 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/nut/amd64:0.17.0
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
-# For an alternative implementation that builds from source instead of installing from Debian
-# Unstable: https://github.com/hassio-addons/addon-nut/pull/477/files
-
-# To avoid mixing Debian Stable upgrades with Debian Unstable upgrades (for clarity and to simplify
-# troubleshooting), upgrade Debian Stable before upgrading to anything in Debian Unstable.
-RUN \
-    apt-get update \
-    && apt-get -o 'Dpkg::Options::=--force-confold' dist-upgrade -y \
-    && apt-get autoremove --purge -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 # TEMPORARY
 # Apply upstream PRs 472 and 473.
 COPY rootfs.fixes /
@@ -26,21 +14,6 @@ RUN \
         nut-powerman-pdu=2.8.1-5 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# Upgrade NUT using Debian Unstable/Sid.
-# hadolint ignore=DL3003
-COPY rootfs /
-RUN \
-    apt-get update \
-    && apt-get -o 'Dpkg::Options::=--force-confold' dist-upgrade -y \
-    && apt-get autoremove --purge -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Verify the expected version of NUT was installed.
-RUN \
-    NUT_VER='2.8.4+really-2' \
-    && test "$(dpkg-query --show -f='${Version}' nut)" '=' "$NUT_VER"
 
 # Build arguments
 ARG BUILD_ARCH
