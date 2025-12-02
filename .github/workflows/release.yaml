@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  # This is intentionally not run on 'push' or 'pull_request' so that multiple changes or PRs can be
+  # merged without triggering an automatic release for each one.
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: Relative path within Git repo of Add-on to release
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release a new version of the specified Add-on
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.0
+
+      - name: Run update script
+        run: |
+          set -e
+          git config --global user.name 'Release workflow'
+          git config --global user.email '${{ github.repository_owner }}@users.noreply.github.com'
+          '${{ inputs.addon }}/update' --release

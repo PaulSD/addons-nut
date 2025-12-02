@@ -1,0 +1,31 @@
+name: Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      haRepo:
+        description: HA Add-on Repo URL, if different than Git repo URL
+        type: string
+        required: false
+  schedule:
+    - cron: "20 11 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Handle upstream updates and Git fork
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.0
+
+      - name: Run update script
+        run: |
+          set -e
+          git config --global user.name 'Release workflow'
+          git config --global user.email '${{ github.repository_owner }}@users.noreply.github.com'
+          ARGS=
+          [ -n '${{ inputs.haRepo }}' ] && ARGS+="--ha-repo '${{ inputs.haRepo }}'"
+          ./update $ARGS
