@@ -1,0 +1,144 @@
+name: Build
+
+env:
+  BUILD_ARGS: "--test"
+
+on:
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: Relative path within Git repo of Add-on to build (Will build all if empty)
+        type: string
+        required: false
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    name: Identify add-ons to build
+    outputs:
+      changed_addons: ${{ steps.changed_addons.outputs.addons }}
+      changed: ${{ steps.changed_addons.outputs.changed }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Identify add-ons to build
+        id: changed_addons
+        run: |
+          set -e
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ] ; then
+            if [ -n '${{ inputs.addon }}' ] ; then
+              echo 'Will build requested add-on: "${{ inputs.addon }}"'
+              echo 'changed=true' >> "$GITHUB_OUTPUT"
+              echo 'addons=["${{ inputs.addon }}"]' >> "$GITHUB_OUTPUT"
+            else
+              Addons=
+              for File in $(find . -mindepth 2 -maxdepth 2 -name config.yaml -type f -print) ; do
+                Addon="$(dirname "$File")"
+                Addons+="\"${Addon#./}\","
+              done
+              Addons="${Addons%,}"
+              if [ -n "$Addons" ] ; then
+                echo "Will build all add-ons: $Addons"
+                echo 'changed=true' >> "$GITHUB_OUTPUT"
+                echo "addons=[$Addons]" >> "$GITHUB_OUTPUT"
+              else
+                echo 'No add-ons found'
+              fi
+            fi
+            exit
+          fi
+
+          if [ '${{ github.event_name }}' = 'push' ] ; then
+            OldRef='${{ github.event.before }}'
+            NewRef='${{ github.event.after }}'
+          elif [ '${{ github.event_name }}' = 'pull_request' ] ; then
+            OldRef='${{ github.event.pull_request.base.sha }}'
+            NewRef='${{ github.event.pull_request.head.sha }}'
+          else
+            echo 'ERROR: Unexpected github.event_name: ${{ github.event_name }}' >&2
+            exit 10
+          fi
+
+          ChangedAddons=
+          Files="$(git diff -G '^version:' --name-only "$OldRef..$NewRef" -- '*/config.yaml')" \
+           || true
+          for File in $Files ; do
+            ChangedAddons+="\"$(dirname "$File")\","
+          done
+          ChangedAddons="${ChangedAddons%,}"
+
+          if [ -n "$ChangedAddons" ] ; then
+            echo "Changed add-ons: $ChangedAddons"
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo "addons=[$ChangedAddons]" >> "$GITHUB_OUTPUT"
+          else
+            echo 'No add-ons had their version number changed'
+          fi
+  build:
+    needs: init
+    runs-on: ubuntu-latest
+    if: needs.init.outputs.changed == 'true'
+    name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
+    strategy:
+      matrix:
+        addon: ${{ fromJson(needs.init.outputs.changed_addons) }}
+        arch: ["aarch64", "amd64"]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Get information
+        id: info
+        uses: home-assistant/actions/helpers/info@master
+        with:
+          path: "./${{ matrix.addon }}"
+
+      - name: Check if add-on should be built
+        id: check
+        run: |
+          if [ '${{ steps.info.outputs.image }}' == 'null' ]; then
+            echo 'Image property is not defined, skipping build'
+            echo 'build_arch=false' >> "$GITHUB_OUTPUT"
+          elif [[ '${{ steps.info.outputs.architectures }}' =~ "${{ matrix.arch }}" ]]; then
+            echo 'build_arch=true' >> "$GITHUB_OUTPUT"
+            echo "image='$(echo '${{ steps.info.outputs.image }}' | tr -d '"' | cut -d'/' -f3)'" \
+             >> "$GITHUB_OUTPUT"
+            if [ '${{ github.event_name }}' = 'workflow_dispatch' ] \
+             || [ -z '${{ github.head_ref }}' -a '${{ github.event_name }}' = 'push' ]; then
+              echo 'BUILD_ARGS=' >> "$GITHUB_ENV"
+            fi
+          else
+            echo '${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build'
+            echo 'build_arch=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to GitHub Container Registry
+        if: env.BUILD_ARGS != '--test'
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ${{ matrix.addon }} add-on
+        if: steps.check.outputs.build_arch == 'true'
+        uses: home-assistant/builder@2025.11.0
+        with:
+          args: |
+            ${{ env.BUILD_ARGS }} \
+            --${{ matrix.arch }} \
+            --target /data/${{ matrix.addon }} \
+            --image '${{ steps.check.outputs.image }}' \
+            --docker-hub 'ghcr.io/${{ github.repository_owner }}' \
+            --addon

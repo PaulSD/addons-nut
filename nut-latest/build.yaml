@@ -1,0 +1,4 @@
+---
+build_from:
+  aarch64: "ghcr.io/hassio-addons/nut/aarch64:0.17.0"
+  amd64: "ghcr.io/hassio-addons/nut/amd64:0.17.0"
